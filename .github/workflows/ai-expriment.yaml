@@ -61,6 +61,8 @@ jobs:
     env:
       REGISTRY: ghcr.io
       IMAGE_NAME: ${{ github.repository }}
+    outputs:
+      image_tag: ${{ steps.set_output.outputs.image_tag }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -113,11 +115,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run AI Review
-        uses: openai/openai-codereviewer@v1
+        uses: Ostrich-Cyber-Risk/ai-codereviewer@main
         with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          review-pr: true
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_MODEL: "gpt-4" # Optional: defaults to "gpt-4"
+          exclude: "**/*.json, **/*.md" # Optional: exclude patterns separated by commas
 
   # ----------------- AI Test Generator -----------------
   ai-test-generator:
@@ -127,10 +130,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Generate AI Test Suggestions
-        uses: openai/openai-codereviewer@v1
+        uses: Ostrich-Cyber-Risk/ai-codereviewer@main
         with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_MODEL: "gpt-4" # Optional: defaults to "gpt-4"
           review-pr: false
           prompt: "Suggest additional unit tests for untested functions in TypeScript project."
 
@@ -142,10 +146,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Analyze Deployment
-        uses: openai/openai-codereviewer@v1
+        uses: Ostrich-Cyber-Risk/ai-codereviewer@main
         with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_MODEL: "gpt-4" # Optional: defaults to "gpt-4"
           prompt: "Summarize Kubernetes dev cluster health and potential deployment risks."
 
   # ----------------- AI Email Notification -----------------
@@ -158,8 +163,15 @@ jobs:
         id: pipeline_status
         run: |
           STATUS="SUCCESS"
-          # This is a simplified example to set pipeline status
+          # Check previous job results
+          for job in ai-review ai-test-generator docker ai-deploy-analyzer; do
+            RESULT=$(jq -r ".jobs.\"$job\".conclusion" $GITHUB_EVENT_PATH 2>/dev/null || echo "")
+            if [[ "$RESULT" != "success" && "$RESULT" != "" ]]; then
+              STATUS="FAILURE"
+            fi
+          done
           echo "PIPELINE_STATUS=$STATUS" >> $GITHUB_ENV
+          # You can also include summary details
           echo "SECURITY_ISSUES=No critical issues found" >> $GITHUB_ENV
           echo "TEST_COVERAGE=85%" >> $GITHUB_ENV
           echo "DEPLOYMENT_STATUS=Docker image pushed, dev cluster updated" >> $GITHUB_ENV
